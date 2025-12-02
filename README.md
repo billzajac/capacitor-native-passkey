@@ -125,7 +125,7 @@ Apache-2.0 (same as original)
 ## Support
 
 For issues or questions:
-- GitHub Issues: https://github.com/komyun/capacitor-native-passkey/issues
+- GitHub Issues: https://github.com/billzajac/capacitor-native-passkey/issues
 - Original implementation credit: DarkEdges
 
 ## Changelog

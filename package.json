@@ -17,10 +17,10 @@
     "license": "Apache-2.0",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/komyun/capacitor-native-passkey.git"
+        "url": "git+https://github.com/billzajac/capacitor-native-passkey.git"
     },
     "bugs": {
-        "url": "https://github.com/komyun/capacitor-native-passkey/issues"
+        "url": "https://github.com/billzajac/capacitor-native-passkey/issues"
     },
     "keywords": [
         "capacitor",
