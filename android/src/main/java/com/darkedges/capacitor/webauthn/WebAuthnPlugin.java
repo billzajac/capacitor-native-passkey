@@ -3,17 +3,13 @@ package com.darkedges.capacitor.webauthn;
 import android.os.CancellationSignal;
 import android.util.Log;
 
-import androidx.activity.result.ActivityResultLauncher;
 import androidx.credentials.CreateCredentialResponse;
 import androidx.credentials.CreatePublicKeyCredentialRequest;
 import androidx.credentials.Credential;
-import androidx.credentials.CredentialManager;
 import androidx.credentials.CredentialManagerCallback;
 import androidx.credentials.GetCredentialRequest;
 import androidx.credentials.GetCredentialResponse;
-import androidx.credentials.GetPasswordOption;
 import androidx.credentials.GetPublicKeyCredentialOption;
-import androidx.credentials.PasswordCredential;
 import androidx.credentials.PublicKeyCredential;
 import androidx.credentials.exceptions.CreateCredentialCancellationException;
 import androidx.credentials.exceptions.CreateCredentialException;
@@ -35,7 +31,6 @@ import org.json.JSONException;
 @CapacitorPlugin(name = "WebAuthn")
 public class WebAuthnPlugin extends Plugin {
     private final WebAuthn implementation = new WebAuthn();
-    ActivityResultLauncher createCredentialIntentLauncher;
 
     @Override
     public void load() {
@@ -61,16 +56,14 @@ public class WebAuthnPlugin extends Plugin {
     @PluginMethod
     public void startAuthentication(PluginCall call) {
         String requestJson = call.getData().toString();
-        // Retrieves the user's saved password for your app from their
-        // password provider.
-        GetPasswordOption getPasswordOption = new GetPasswordOption();
 
-        // Get webauthns from the user's public key credential provider.
-        String clientDataHash = null;
+        // Only request passkey credentials (no password option).
+        // Including GetPasswordOption causes issues when Google account
+        // auth tokens are stale (BadAuthentication), which can block
+        // the entire credential flow including passkeys.
         GetPublicKeyCredentialOption getPublicKeyCredentialOption =
                 new GetPublicKeyCredentialOption(requestJson, null);
         GetCredentialRequest getCredRequest = new GetCredentialRequest.Builder()
-                .addCredentialOption(getPasswordOption)
                 .addCredentialOption(getPublicKeyCredentialOption)
                 .build();
         CancellationSignal cancellationSignal = null;
@@ -82,17 +75,11 @@ public class WebAuthnPlugin extends Plugin {
                 new CredentialManagerCallback<GetCredentialResponse, GetCredentialException>() {
                     @Override
                     public void onResult(GetCredentialResponse result) {
-                        // Handle the successfully returned credential.
                         Credential credential = result.getCredential();
                         if (credential instanceof PublicKeyCredential) {
                             String responseJson = ((PublicKeyCredential) credential).getAuthenticationResponseJson();
                             fidoAuthenticateToServer(call, responseJson);
-                        } else if (credential instanceof PasswordCredential) {
-                            String id = ((PasswordCredential) credential).getId();
-                            String password = ((PasswordCredential) credential).getPassword();
-                            firebaseSignInWithPassword(call, id, password);
                         } else {
-                            Log.v("TAG", "credential: "+credential.getData());
                             handlePasskeyError(call, "Unexpected type of credential", credential.getClass().getName());
                         }
                     }
@@ -152,10 +139,6 @@ public class WebAuthnPlugin extends Plugin {
                         }
                     }
                 });
-    }
-
-    private void firebaseSignInWithPassword(PluginCall call, String id, String password) {
-        handlePasskeyError(call, "Unexpected type of credential", "Firebase Credentials found.");
     }
 
     private void fidoAuthenticateToServer(PluginCall call, String responseJson) {
