@@ -36,8 +36,9 @@ public class WebAuthnPlugin extends Plugin {
     @Override
     public void load() {
         super.load();
-        // Use your app or activity context to instantiate a client instance of CredentialManager.
-        implementation.setCredentialManager(CredentialManager.create(bridge.getActivity().getApplicationContext()));
+        // Use activity context (not application context) for CredentialManager.
+        // Some credential providers inspect the context type for UI hosting decisions.
+        implementation.setCredentialManager(CredentialManager.create(getActivity()));
     }
 
     @PluginMethod
@@ -56,6 +57,12 @@ public class WebAuthnPlugin extends Plugin {
 
     @PluginMethod
     public void startAuthentication(PluginCall call) {
+        // Keep the call alive across activity lifecycle changes.
+        // When CredentialSelectorActivity opens, MainActivity pauses.
+        // Without this, the PluginCall reference is invalidated and the
+        // onResult/onError callbacks silently fail to deliver results.
+        call.setKeepAlive(true);
+
         String requestJson = call.getData().toString();
 
         // Only request passkey credentials (no password option).
@@ -95,18 +102,12 @@ public class WebAuthnPlugin extends Plugin {
 
     @PluginMethod
     public void startRegistration(PluginCall call) {
+        // Keep the call alive across activity lifecycle changes.
+        call.setKeepAlive(true);
+
         String requestJson = call.getData().toString();
-        String clientDataHash = null;
         CreatePublicKeyCredentialRequest createPublicKeyCredentialRequest =
-                // `requestJson` contains the request in JSON format. Uses the standard
-                // WebAuthn web JSON spec.
-                // `preferImmediatelyAvailableCredentials` defines whether you prefer
-                // to only use immediately available credentials, not  hybrid credentials,
-                // to fulfill this request. This value is false by default.
                 new CreatePublicKeyCredentialRequest(requestJson, null, false);
-        // Execute CreateCredentialRequest asynchronously to register credentials
-        // for a user account. Handle success and failure cases with the result and
-        // exceptions, respectively.
         CancellationSignal cancellationSignal = null;
         implementation.getCredentialManager().createCredentialAsync(getActivity(), createPublicKeyCredentialRequest, cancellationSignal, getContext().getMainExecutor(),
                 new CredentialManagerCallback<CreateCredentialResponse, CreateCredentialException>() {
@@ -118,20 +119,12 @@ public class WebAuthnPlugin extends Plugin {
                     @Override
                     public void onError(CreateCredentialException e) {
                         if (e instanceof CreatePublicKeyCredentialDomException) {
-                            // Handle the webauthn DOM errors thrown according to the
-                            // WebAuthn spec.
                             handlePasskeyError(call, "CreatePublicKeyCredentialDomException", ((CreatePublicKeyCredentialDomException)e).getMessage());
                         } else if (e instanceof CreateCredentialCancellationException) {
-                            // The user intentionally canceled the operation and chose not
-                            // to register the credential.
                             handlePasskeyError(call, "CreateCredentialCancellationException", ((CreateCredentialCancellationException)e).getMessage());
                         } else if (e instanceof CreateCredentialInterruptedException) {
-                            // Retry-able error. Consider retrying the call.
                             handlePasskeyError(call, "CreateCredentialInterruptedException", ((CreateCredentialInterruptedException)e).getMessage());
                         } else if (e instanceof CreateCredentialProviderConfigurationException) {
-                            // Your app is missing the provider configuration dependency.
-                            // Most likely, you're missing the
-                            // "credentials-play-services-auth" module.
                             handlePasskeyError(call, "CreateCredentialProviderConfigurationException", ((CreateCredentialProviderConfigurationException)e).getMessage());
                         } else if (e instanceof CreateCredentialUnknownException) {
                             handlePasskeyError(call, "CreateCredentialUnknownException", ((CreateCredentialUnknownException)e).getMessage());
@@ -143,13 +136,12 @@ public class WebAuthnPlugin extends Plugin {
     }
 
     private void fidoAuthenticateToServer(PluginCall call, String responseJson) {
-        JSObject ret = null;
         try {
-            ret = new JSObject(responseJson);
+            JSObject ret = new JSObject(responseJson);
+            call.resolve(ret);
         } catch (JSONException e) {
-            call.reject("Failed to get webauthn", e);
+            call.reject("Failed to parse webauthn response", e);
         }
-        call.resolve(ret);
     }
 
     private void handlePasskeyError(PluginCall call, String type, String e) {
@@ -158,14 +150,12 @@ public class WebAuthnPlugin extends Plugin {
         call.reject(e, ret);
     }
 
-    //  @SuppressLint("RestrictedApi")
     private void handleSuccessfulCreatePasskeyResult(PluginCall call, CreateCredentialResponse createCredentialResponse) {
-        JSObject ret = null;
         try {
-            ret = new JSObject(createCredentialResponse.getData().getString("androidx.credentials.BUNDLE_KEY_REGISTRATION_RESPONSE_JSON"));
+            JSObject ret = new JSObject(createCredentialResponse.getData().getString("androidx.credentials.BUNDLE_KEY_REGISTRATION_RESPONSE_JSON"));
+            call.resolve(ret);
         } catch (JSONException e) {
-            call.reject("Failed to get webauthn", e);
+            call.reject("Failed to parse registration response", e);
         }
-        call.resolve(ret);
     }
 }
